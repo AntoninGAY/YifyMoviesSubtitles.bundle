@@ -1,32 +1,21 @@
 from StringIO import StringIO
 from zipfile import ZipFile
 
-YIFY_SUBS_API = 'http://api.yifysubtitles.com/subs/%s'
-YIFY_DL_BASE = 'http://www.yifysubtitles.com'
+YIFY_DL_BASE = 'http://www.yifysubtitles.com/subtitle/'
+YIFY_SUBS_BASE = 'http://www.yifysubtitles.com/movie-imdb/%s'
 
 ####################################################################################################
-def Start():
+class YifyMoviesSubtitles(Agent.Movies):
 
-	HTTP.CacheTime = CACHE_1DAY
-	HTTP.Headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36'
-
-####################################################################################################
-class OpenSubtitlesAgentMovies(Agent.Movies):
-
-	name = 'YIFY Subtitles'
+	name = 'YIFY Movies Subtitles'
 	languages = [Locale.Language.NoLanguage]
 	primary_provider = False
 	contributes_to = ['com.plexapp.agents.imdb']
 
 	def search(self, results, media, lang):
-
-		results.Append(MetadataSearchResult(
-			id = media.primary_metadata.id,
-			score = 100
-		))
+		results.add(MetadataSearchResult(id = media.primary_metadata.id, score = 100))
 
 	def update(self, metadata, media, lang):
-
 		for i in media.items:
 			for part in i.parts:
 				fetch_subtitles(part, metadata.id)
@@ -34,77 +23,53 @@ class OpenSubtitlesAgentMovies(Agent.Movies):
 ####################################################################################################
 def fetch_subtitles(part, imdb_id):
 
-	lang_list = list(set([Prefs['lang_1'], Prefs['lang_2'], Prefs['lang_3']]))
+	# Get agent preferences
+	prefs_languages = list(set([Prefs['lang_1'], Prefs['lang_2'], Prefs['lang_3']]))
 
-	if 'None' in lang_list:
-		lang_list.remove('None')
+	# Remove any posible duplicates from agent preferences
+	if 'None' in prefs_languages:
+		prefs_languages.remove('None')
 
-	lang_list_iso = [get_iso_639_1(l) for l in lang_list]
+	# Get ISO codes for agent preferences languages
+	prefs_languages_iso = [get_iso_code(pref_language) for pref_language in prefs_languages]
+	
+	# Remove all subtitles from languages no longer set in agent preferences
+	for subtitle in part.subtitles:
+		if subtitle not in prefs_languages_iso:
+			part.subtitles[subtitle].validate_keys([])
 
-	# Remove all subtitles from languages no longer set in the agent's preferences
-	for l in part.subtitles:
-		if l not in lang_list_iso:
-			part.subtitles[l].validate_keys([])
+	# Get languages available to download from yifysubtitles.com
+	yifysubtitles_request = HTML.ElementFromURL(YIFY_SUBS_BASE % (imdb_id), sleep=2.0)
+	yifysubtitles_available_languages = list(set(yifysubtitles_request.xpath('//tr/td[@class="flag-cell"]/span[@class="sub-lang"]/text()')))
 
-	for l in lang_list:
-		json_obj = JSON.ObjectFromURL(YIFY_SUBS_API % (imdb_id), sleep=2.0)
+	for pref_language in prefs_languages:
+		if pref_language in yifysubtitles_available_languages:
+			subtitle_max_rating = str(max(list(map(int, yifysubtitles_request.xpath('//tr[td[@class="flag-cell"]/span[@class="sub-lang"]/text() = "' + pref_language + '"]/td[@class="rating-cell"]/span[1]/text()')))))
+			subtitle_relative_path = yifysubtitles_request.xpath('//tr[td[@class="rating-cell"]/span[1]/text() = "' + subtitle_max_rating + '" and td[@class="flag-cell"]/span[@class="sub-lang"]/text() = "' + pref_language + '"]/td[not(@class)]/a/@href')[0]				
+			subtitle_download_link = YIFY_DL_BASE + subtitle_relative_path.split('/')[2] + '.zip'
+			subtitle_filename = subtitle_download_link.split('/')[-1]
 
-		if 'subtitles' not in json_obj or json_obj['subtitles'] < 1:
-			Log('No subtitles available')
-			return None
+			# Download subtitle only if it's not already present
+			if subtitle_filename not in part.subtitles[get_iso_code(pref_language)]:
 
-		if l.lower() not in json_obj['subs'][imdb_id]:
-			Log('No subtitles available for language "%s"' % (l))
-			return None
+				# Cleanup other subtitles previously downloaded with this agent, only one subtitle per language is needed
+				part.subtitles[get_iso_code(pref_language)].validate_keys([])
 
-		rating = 0
-		id = 0
-		selected = None
+				# Unzip file and get subtitle data
+				subtitle_zip_file = ZipFile(StringIO(HTTP.Request(subtitle_download_link).content))
+				subtitle_data = subtitle_zip_file.open(subtitle_zip_file.namelist()[0]).read()
 
-		for st in json_obj['subs'][imdb_id][l.lower()]:
-
-			# Skip hearing impaired subtitles
-			if st['hi'] == 1:
-				continue
-
-			# Prefer higher (newer) id if rating is the same
-			if st['rating'] == rating and st['id'] > id:
-				rating = st['rating']
-				id = st['id']
-				selected = YIFY_DL_BASE + st['url']
-
-			# Always prefer a higher rating
-			elif st['rating'] > rating:
-				rating = st['rating']
-				id = st['id']
-				selected = YIFY_DL_BASE + st['url']
+				# Saving subtitle data to Plex Media Metadata
+				part.subtitles[get_iso_code(pref_language)][subtitle_filename] = Proxy.Media(subtitle_data, ext='srt')
 
 			else:
-				continue
-
-			if selected:
-				filename = selected.split('/')[-1]
-
-				# Download subtitle only if it's not already present
-				if filename not in part.subtitles[get_iso_639_1(l)]:
-
-					# Cleanup other subtitles previously downloaded with this agent
-					# (We want just one subtitle per language)
-					part.subtitles[get_iso_639_1(l)].validate_keys([])
-
-					zip = ZipFile(StringIO(HTTP.Request(selected).content))
-					sub_data = zip.open(zip.namelist()[0]).read()
-
-					part.subtitles[get_iso_639_1(l)][filename] = Proxy.Media(sub_data, ext='srt')
-
-				else:
-					Log('Skipping, subtitle already downloaded: %s' % (selected))
-
-			else:
-				Log('No suitable subtitle found for language "%s"' % (l))
+				Log('Skipping, subtitle already downloaded: %s' % (subtitle_download_link))
+		else:
+			Log('No subtitles available for language "%s"' % (pref_language))
+			return None
 
 ####################################################################################################
-def get_iso_639_1(language):
+def get_iso_code(language):
 
 	languages = {
 		'Albanian': 'sq',
@@ -120,7 +85,7 @@ def get_iso_639_1(language):
 		'Dutch': 'nl',
 		'English': 'en',
 		'Estonian': 'et',
-		'Farsi-Persian': 'fa',
+		'Farsi/Persian': 'fa',
 		'Finnish': 'fi',
 		'French': 'fr',
 		'German': 'de',
@@ -152,3 +117,4 @@ def get_iso_639_1(language):
 
 	if language in languages:
 		return languages[language]
+####################################################################################################
