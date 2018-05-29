@@ -13,7 +13,7 @@ class YifyMoviesSubtitles(Agent.Movies):
 	contributes_to = ['com.plexapp.agents.imdb']
 
 	def search(self, results, media, lang):
-		results.add(MetadataSearchResult(id = media.primary_metadata.id, score = 100))
+		results.Append(MetadataSearchResult(id = media.primary_metadata.id, score = 100))
 
 	def update(self, metadata, media, lang):
 		for i in media.items:
