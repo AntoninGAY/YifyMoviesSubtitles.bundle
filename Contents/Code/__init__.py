@@ -5,6 +5,12 @@ YIFY_DL_BASE = 'http://www.yifysubtitles.com/subtitle/'
 YIFY_SUBS_BASE = 'http://www.yifysubtitles.com/movie-imdb/%s'
 
 ####################################################################################################
+def Start():
+
+	HTTP.CacheTime = CACHE_1DAY
+	HTTP.Headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36'
+
+####################################################################################################
 class YifyMoviesSubtitles(Agent.Movies):
 
 	name = 'YIFY Movies Subtitles'
