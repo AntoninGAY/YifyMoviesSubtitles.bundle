@@ -49,11 +49,16 @@ def fetch_subtitles(part, imdb_id):
 	yifysubtitles_available_languages = list(set(yifysubtitles_request.xpath('//tr/td[@class="flag-cell"]/span[@class="sub-lang"]/text()')))
 
 	for pref_language in prefs_languages:
+		Log('Preference Language: %s' % (pref_language))
 		if pref_language in yifysubtitles_available_languages:
 			subtitle_max_rating = str(max(list(map(int, yifysubtitles_request.xpath('//tr[td[@class="flag-cell"]/span[@class="sub-lang"]/text() = "' + pref_language + '"]/td[@class="rating-cell"]/span[1]/text()')))))
-			subtitle_relative_path = yifysubtitles_request.xpath('//tr[td[@class="rating-cell"]/span[1]/text() = "' + subtitle_max_rating + '" and td[@class="flag-cell"]/span[@class="sub-lang"]/text() = "' + pref_language + '"]/td[not(@class)]/a/@href')[0]				
+			Log('Subtitle Max Rating: %s' % (subtitle_max_rating))
+			subtitle_relative_path = yifysubtitles_request.xpath('//tr[td[@class="rating-cell"]/span[1]/text() = "' + subtitle_max_rating + '" and td[@class="flag-cell"]/span[@class="sub-lang"]/text() = "' + pref_language + '"]/td[not(@class)]/a/@href')[0]
+			Log('Subtitle Relative Path: %s' % (subtitle_relative_path))
 			subtitle_download_link = YIFY_DL_BASE + subtitle_relative_path.split('/')[2] + '.zip'
+			Log('Subtitle Download Link: %s' % (subtitle_download_link))
 			subtitle_filename = subtitle_download_link.split('/')[-1]
+			Log('Subtitle Filename: %s' % (subtitle_filename))
 
 			# Download subtitle only if it's not already present
 			if subtitle_filename not in part.subtitles[get_iso_code(pref_language)]:
@@ -68,11 +73,10 @@ def fetch_subtitles(part, imdb_id):
 				# Saving subtitle data to Plex Media Metadata
 				part.subtitles[get_iso_code(pref_language)][subtitle_filename] = Proxy.Media(subtitle_data, ext='srt')
 
-			else:
-				Log('Skipping, subtitle already downloaded: %s' % (subtitle_download_link))
+				else:
+					Log('Skipping, subtitle already downloaded: %s' % (subtitle_download_link))
 		else:
 			Log('No subtitles available for language "%s"' % (pref_language))
-			return None
 
 ####################################################################################################
 def get_iso_code(language):
