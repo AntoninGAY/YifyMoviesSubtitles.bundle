@@ -73,8 +73,8 @@ def fetch_subtitles(part, imdb_id):
 				# Saving subtitle data to Plex Media Metadata
 				part.subtitles[get_iso_code(pref_language)][subtitle_filename] = Proxy.Media(subtitle_data, ext='srt')
 
-				else:
-					Log('Skipping, subtitle already downloaded: %s' % (subtitle_download_link))
+			else:
+				Log('Skipping, subtitle already downloaded: %s' % (subtitle_download_link))
 		else:
 			Log('No subtitles available for language "%s"' % (pref_language))
 
